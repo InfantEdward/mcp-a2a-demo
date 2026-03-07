@@ -1,0 +1,17 @@
+{
+  "name": "MathSpecialist",
+  "description": "A specialist in mathematics, capable of solving equations and performing complex calculations using specialized tools.",
+  "version": "1.0.0",
+  "skills": [
+    {
+      "id": "calc-1",
+      "name": "Calculations",
+      "description": "Perform basic arithmetic and complex math.",
+      "tags": ["math", "calculator"]
+    }
+  ],
+  "capabilities": {
+    "streaming": true,
+    "push_notifications": false
+  }
+}

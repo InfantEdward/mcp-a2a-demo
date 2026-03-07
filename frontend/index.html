@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP + A2A Educational Explorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <meta name="description" content="An educational frontend exploring MCP and A2A protocols in real-time.">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo-container">
+                <div class="logo-icon"></div>
+                <h1>AgenticFlow</h1>
+            </div>
+            <nav class="nav-links">
+                <a href="#" class="active" id="nav-chat">Chat & Explore</a>
+                <a href="#" id="nav-arch">Architecture</a>
+            </nav>
+            <div class="connection-status">
+                <span class="status-dot connected" id="ws-status-dot"></span>
+                <span id="ws-status-text">Connected</span>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <div id="app-ui-container" style="display: flex; width: 100%; height: 100%;">
+                <section class="chat-section">
+                    <header class="section-header">
+                        <h2>Interactive Terminal</h2>
+                        <p class="subtitle">Interact with the multi-agent system powered by LangChain</p>
+                    </header>
+                    <div class="chat-window" id="chat-window">
+                        <div class="message system-msg">
+                            <div class="msg-avatar">SYS</div>
+                            <div class="msg-content">
+                                <p>Welcome! Ask me a math question or anything else. I will route it appropriately.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="input-container">
+                        <form id="chat-form">
+                            <input type="text" id="chat-input" placeholder="Enter your prompt here..." autocomplete="off" required />
+                            <button type="submit" class="send-btn">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                </svg>
+                            </button>
+                        </form>
+                    </div>
+                </section>
+
+                <section class="inspector-section">
+                    <header class="section-header inspector-header">
+                        <h2>Event Inspector</h2>
+                        <div class="filters">
+                            <button class="filter-btn active" data-filter="all">All</button>
+                            <button class="filter-btn" data-filter="mcp">MCP Tools</button>
+                            <button class="filter-btn" data-filter="a2a">A2A Protocol</button>
+                        </div>
+                    </header>
+                    
+                    <div class="events-container" id="events-list">
+                        <div class="event-placeholder">Waiting for events...</div>
+                    </div>
+                </section>
+            </div>
+
+            <div id="architecture-container" style="display: none; width: 100%; height: 100%; padding: 3rem; overflow-y: auto; background-color: var(--bg-primary);">
+                <header class="section-header" style="background: transparent; border: none; padding-bottom: 2.5rem; padding-left: 0;">
+                    <h2 style="font-size: 2rem; margin-bottom: 0.5rem;">System Architecture</h2>
+                    <p class="subtitle" style="font-size: 1.1rem;">A2A Protocol Routing & MCP Tool Observability</p>
+                </header>
+                <div style="max-width: 900px; background: var(--bg-surface); padding: 2.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
+                    <h3 style="color: var(--accent-blue); margin-bottom: 1rem; font-size: 1.3rem;">Data-Driven Handoffs</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 2.5rem; font-size: 1.05rem; line-height: 1.6;">The router dynamically loads <strong>Agent Cards</strong> from the <code>agents/</code> directory and uses an LLM to decide which agent to delegate to based on their metadata.</p>
+                    
+                    <h3 style="color: var(--color-mcp); margin-bottom: 1rem; font-size: 1.3rem;">MCP Sidecar Definitions</h3>
+                    <p style="color: var(--text-secondary); margin-bottom: 2.5rem; font-size: 1.05rem; line-height: 1.6;">Implementation details (MCP server paths) are kept in a separate <code>implementations/</code> folder to keep the public A2A cards clean and protocol-compliant.</p>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

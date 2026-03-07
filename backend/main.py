@@ -1,0 +1,49 @@
+import logging
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from backend.event_logger import event_logger
+from backend.a2a_orchestrator import adk_executor
+from dotenv import load_dotenv
+
+from a2a.server.apps import A2AFastAPIApplication
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore
+from a2a.types import AgentCard, AgentCapabilities
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger("uvicorn")
+
+load_dotenv()
+card = AgentCard(
+    name="LangChain-MCP-A2A Demo Agent",
+    description="A demonstration of A2A and MCP protocols using LangChain.",
+    url="http://127.0.0.1:8000/api/a2a/",
+    version="1.1.0",
+    default_input_modes=["text/plain"],
+    default_output_modes=["text/plain"],
+    capabilities=AgentCapabilities(),
+    skills=[],
+)
+
+handler = DefaultRequestHandler(
+    agent_executor=adk_executor, task_store=InMemoryTaskStore()
+)
+
+a2a_app = A2AFastAPIApplication(agent_card=card, http_handler=handler).build()
+
+app = FastAPI()
+
+app.mount("/api/a2a", a2a_app)
+
+
+@app.websocket("/ws/events")
+async def websocket_endpoint(websocket: WebSocket):
+    await event_logger.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        event_logger.disconnect(websocket)
+
+
+app.mount("/", StaticFiles(directory="frontend", html=True), name="frontend")

@@ -1,0 +1,17 @@
+{
+  "name": "GeneralAssistant",
+  "description": "A versatile general-purpose assistant for general inquiries, greetings, and creative tasks.",
+  "version": "1.0.0",
+  "skills": [
+    {
+      "id": "gen-1",
+      "name": "General Conversations",
+      "description": "Engage in natural, open-ended conversations.",
+      "tags": ["chat", "general"]
+    }
+  ],
+  "capabilities": {
+    "streaming": false,
+    "push_notifications": false
+  }
+}

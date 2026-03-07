@@ -9,7 +9,6 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
-
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.types import (
     TaskStatusUpdateEvent,
@@ -18,6 +17,7 @@ from a2a.types import (
     Message,
     TextPart,
 )
+from backend.event_logger import event_logger
 
 logger = logging.getLogger("Orchestrator")
 
@@ -120,24 +120,28 @@ class DynamicRouter(AgentExecutor):
             # Format history for the router
             history_str = get_buffer_string(history.messages)
 
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    task_id=context.task_id,
-                    context_id=session_id,
-                    final=False,
-                    status=TaskStatus(
-                        state=TaskState.working,
-                        message=Message(
-                            messageId=str(uuid.uuid4()),
-                            role="agent",
-                            parts=[
-                                TextPart(
-                                    text="[Orchestrator] Deciding destination..."  # noqa: E501
-                                )
-                            ],
-                        ),
+            orchestrator_event = TaskStatusUpdateEvent(
+                task_id=context.task_id,
+                context_id=session_id,
+                final=False,
+                status=TaskStatus(
+                    state=TaskState.working,
+                    message=Message(
+                        messageId=str(uuid.uuid4()),
+                        role="agent",
+                        parts=[
+                            TextPart(
+                                text="[Orchestrator] Deciding destination..."
+                            )
+                        ],
                     ),
-                )
+                ),
+            )
+            await event_queue.enqueue_event(orchestrator_event)
+            await event_logger.broadcast(
+                source="A2A Server",
+                event_type="Task Status: Working",
+                payload=json.loads(orchestrator_event.model_dump_json()),
             )
 
             decision = await self.router_chain.ainvoke(
@@ -159,70 +163,79 @@ class DynamicRouter(AgentExecutor):
 
             target_agent = selected_info["instance"]
 
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    task_id=context.task_id,
-                    context_id=session_id,
-                    final=False,
-                    status=TaskStatus(
-                        state=TaskState.working,
-                        message=Message(
-                            messageId=str(uuid.uuid4()),
-                            role="agent",
-                            parts=[
-                                TextPart(
-                                    text=f"[Router] Routing to {agent_name}. {reason}"  # noqa: E501
-                                )
-                            ],
-                        ),
+            router_event = TaskStatusUpdateEvent(
+                task_id=context.task_id,
+                context_id=session_id,
+                final=False,
+                status=TaskStatus(
+                    state=TaskState.working,
+                    message=Message(
+                        messageId=str(uuid.uuid4()),
+                        role="agent",
+                        parts=[
+                            TextPart(
+                                text=f"[Router] Routing to {agent_name}. {reason}"  # noqa: E501
+                            )
+                        ],
                     ),
-                )
+                ),
+            )
+            await event_queue.enqueue_event(router_event)
+            await event_logger.broadcast(
+                source="A2A Server",
+                event_type="Task Status: Working",
+                payload=json.loads(router_event.model_dump_json()),
             )
 
             history.add_user_message(user_input)
-
             response_text = await target_agent.run(
                 history.messages, session_id
             )
-
             history.add_ai_message(response_text)
 
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    task_id=context.task_id,
-                    context_id=session_id,
-                    final=True,
-                    status=TaskStatus(
-                        state=TaskState.completed,
-                        message=Message(
-                            messageId=str(uuid.uuid4()),
-                            role="agent",
-                            parts=[
-                                TextPart(
-                                    text=f"[{agent_name}] {response_text}"
-                                )
-                            ],
-                        ),
+            completed_event = TaskStatusUpdateEvent(
+                task_id=context.task_id,
+                context_id=session_id,
+                final=True,
+                status=TaskStatus(
+                    state=TaskState.completed,
+                    message=Message(
+                        messageId=str(uuid.uuid4()),
+                        role="agent",
+                        parts=[
+                            TextPart(text=f"[{agent_name}] {response_text}")
+                        ],
                     ),
-                )
+                ),
+            )
+            await event_queue.enqueue_event(completed_event)
+            await event_logger.broadcast(
+                source="A2A Server",
+                event_type="Task Status: Completed",
+                payload=json.loads(completed_event.model_dump_json()),
             )
 
         except Exception as e:
             err_msg = f"Router Error: {e}\n{traceback.format_exc()}"
-            await event_queue.enqueue_event(
-                TaskStatusUpdateEvent(
-                    task_id=context.task_id,
-                    context_id=session_id,
-                    final=True,
-                    status=TaskStatus(
-                        state=TaskState.failed,
-                        message=Message(
-                            messageId=str(uuid.uuid4()),
-                            role="agent",
-                            parts=[TextPart(text=err_msg)],
-                        ),
+
+            failed_event = TaskStatusUpdateEvent(
+                task_id=context.task_id,
+                context_id=session_id,
+                final=True,
+                status=TaskStatus(
+                    state=TaskState.failed,
+                    message=Message(
+                        messageId=str(uuid.uuid4()),
+                        role="agent",
+                        parts=[TextPart(text=err_msg)],
                     ),
-                )
+                ),
+            )
+            await event_queue.enqueue_event(failed_event)
+            await event_logger.broadcast(
+                source="A2A Server",
+                event_type="Task Status: Failed",
+                payload=json.loads(failed_event.model_dump_json()),
             )
 
     async def cancel(self, context: RequestContext, event_queue):

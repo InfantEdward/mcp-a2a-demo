@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+from contextlib import AsyncExitStack
 from dotenv import load_dotenv
 
 # Configure logging
@@ -35,6 +36,10 @@ class A2AAgent:
         self.instruction = instruction
         self.mcp_params = None
 
+        self.exit_stack = AsyncExitStack()
+        self.session = None
+        self.tools = None
+
         if mcp_config:
             python_exe = sys.executable
             cmd = (
@@ -46,7 +51,7 @@ class A2AAgent:
                 command=cmd, args=["-m", "backend.mcp_server"]
             )
             logger.info(
-                f"Agent {name} initialized with MCP: {self.mcp_params.command} {self.mcp_params.args}"  # noqa: E501
+                f"Agent {name} configured with MCP params: {self.mcp_params.command} {self.mcp_params.args}"
             )
         else:
             logger.info(f"Agent {name} initialized without MCP tools.")
@@ -55,47 +60,60 @@ class A2AAgent:
         logger.info(f"Agent {self.name} running for session: {session_id}")
 
         if self.mcp_params:
-            async with mcp.client.stdio.stdio_client(self.mcp_params) as (
-                read,
-                write,
-            ):
-                async with ClientSession(read, write) as session:
-                    await session.initialize()
-                    tools = await load_mcp_tools(session)
-                    llm_with_tools = llm.bind_tools(tools)
+            if self.session is None:
+                logger.info(
+                    f"Starting persistent MCP connection for {self.name}..."
+                )
 
-                    system_msg = SystemMessage(content=self.instruction)
-                    all_messages = [system_msg] + list(messages)
+                read, write = await self.exit_stack.enter_async_context(
+                    mcp.client.stdio.stdio_client(self.mcp_params)
+                )
+                self.session = await self.exit_stack.enter_async_context(
+                    ClientSession(read, write)
+                )
 
-                    response = await llm_with_tools.ainvoke(all_messages)
+                await self.session.initialize()
 
-                    while response.tool_calls:
-                        all_messages.append(response)
-                        for tool_call in response.tool_calls:
-                            tool = next(
-                                (
-                                    t
-                                    for t in tools
-                                    if t.name == tool_call["name"]
-                                ),
-                                None,
+                self.tools = await load_mcp_tools(self.session)
+                logger.info(
+                    f"MCP connection established and tools loaded for {self.name}."
+                )
+
+            llm_with_tools = llm.bind_tools(self.tools)
+
+            system_msg = SystemMessage(content=self.instruction)
+            all_messages = [system_msg] + list(messages)
+
+            response = await llm_with_tools.ainvoke(all_messages)
+
+            while response.tool_calls:
+                all_messages.append(response)
+                for tool_call in response.tool_calls:
+                    tool = next(
+                        (t for t in self.tools if t.name == tool_call["name"]),
+                        None,
+                    )
+                    if tool:
+                        result = await tool.ainvoke(tool_call["args"])
+                        all_messages.append(
+                            ToolMessage(
+                                content=str(result),
+                                tool_call_id=tool_call["id"],
                             )
-                            if tool:
-                                result = await tool.ainvoke(tool_call["args"])
-                                all_messages.append(
-                                    ToolMessage(
-                                        content=str(result),
-                                        tool_call_id=tool_call["id"],
-                                    )
-                                )
-                        response = await llm_with_tools.ainvoke(all_messages)
+                        )
+                response = await llm_with_tools.ainvoke(all_messages)
 
-                    return self._clean_content(response.content)
+            return self._clean_content(response.content)
+
         else:
             system_msg = SystemMessage(content=self.instruction)
             all_messages = [system_msg] + list(messages)
             response = await llm.ainvoke(all_messages)
             return self._clean_content(response.content)
+
+    async def close(self):
+        await self.exit_stack.aclose()
+        self.session = None
 
     def _clean_content(self, content):
         if isinstance(content, list):

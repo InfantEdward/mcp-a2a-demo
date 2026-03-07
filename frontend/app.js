@@ -120,12 +120,14 @@ chatForm.addEventListener('submit', async (e) => {
             if (messageText) {
                 let agentAvatar = 'ADK';
                 const match = messageText.match(/^\[(.*?)\]\s*(.*)/s);
+                
                 if (match) {
                     const fullName = match[1];
                     messageText = match[2];
-                    if (fullName.includes('Math')) agentAvatar = 'MATH';
-                    else if (fullName.includes('General')) agentAvatar = 'GEN';
+                    
+                    agentAvatar = fullName.substring(0, 4).toUpperCase();
                 }
+                
                 appendMessage(messageText, 'agent', agentAvatar);
             }
         }
@@ -156,16 +158,30 @@ filterBtns.forEach(btn => {
 function appendMessage(text, role, avatarText = null) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${role}-msg`;
+    
     const avatar = document.createElement('div');
     avatar.className = 'msg-avatar';
     if (role === 'user') avatar.textContent = 'USR';
     else if (role === 'agent') avatar.textContent = avatarText || 'ADK';
     else avatar.textContent = 'SYS';
+    
     const content = document.createElement('div');
     content.className = 'msg-content';
-    const p = document.createElement('p');
-    p.textContent = text;
-    content.appendChild(p);
+    
+    content.innerHTML = marked.parse(text);
+    
+    if (window.renderMathInElement) {
+        renderMathInElement(content, {
+            delimiters: [
+                {left: '$$', right: '$$', display: true},
+                {left: '\\[', right: '\\]', display: true},
+                {left: '$', right: '$', display: false},
+                {left: '\\(', right: '\\)', display: false}
+            ],
+            throwOnError: false
+        });
+    }
+
     msgDiv.appendChild(avatar);
     msgDiv.appendChild(content);
     chatWindow.appendChild(msgDiv);

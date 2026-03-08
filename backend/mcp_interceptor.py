@@ -34,7 +34,6 @@ class InterceptSendStream:
 
     async def send(self, data):
         try:
-            # If it's a Pydantic model or complex object, dump it
             if not isinstance(
                 data, (str, bytes, int, float, bool, type(None))
             ):
@@ -45,7 +44,6 @@ class InterceptSendStream:
                     )
                 )
             else:
-                # Handle raw bytes/strings as before
                 raw_str = (
                     data.decode() if isinstance(data, bytes) else str(data)
                 )

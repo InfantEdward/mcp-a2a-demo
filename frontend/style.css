@@ -236,6 +236,17 @@ body {
     box-shadow: 0 4px 15px rgba(0,0,0,0.1);
 }
 
+.msg-content-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    align-items: flex-start;
+}
+
+.user-msg .msg-content-wrap {
+    align-items: flex-end;
+}
+
 .user-msg .msg-content {
     background-color: #2563eb;
     color: white;
@@ -375,6 +386,12 @@ body {
     user-select: none;
 }
 
+.event-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
 .event-badge {
     font-size: 0.7rem;
     font-weight: 700;
@@ -382,6 +399,36 @@ body {
     border-radius: var(--radius-pill);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+}
+
+.copy-btn {
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    line-height: 1;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.copy-btn:hover {
+    color: var(--text-primary);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.copy-btn.copied {
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.5);
+}
+
+.copy-msg-btn {
+    background: transparent;
+}
+
+.copy-event-btn {
+    background: var(--bg-secondary);
 }
 
 .event-card.mcp .event-badge {

@@ -155,6 +155,43 @@ filterBtns.forEach(btn => {
     });
 });
 
+async function copyTextToClipboard(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+    }
+
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-9999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    document.execCommand('copy');
+    textArea.remove();
+}
+
+function attachCopyBehavior(button, textGetter) {
+    button.addEventListener('click', async () => {
+        const originalText = button.textContent;
+        try {
+            await copyTextToClipboard(textGetter());
+            button.textContent = 'Copied';
+            button.classList.add('copied');
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.classList.remove('copied');
+            }, 1200);
+        } catch (error) {
+            button.textContent = 'Failed';
+            setTimeout(() => {
+                button.textContent = originalText;
+            }, 1200);
+        }
+    });
+}
+
 function appendMessage(text, role, avatarText = null) {
     const msgDiv = document.createElement('div');
     msgDiv.className = `message ${role}-msg`;
@@ -182,8 +219,21 @@ function appendMessage(text, role, avatarText = null) {
         });
     }
 
+    const contentWrap = document.createElement('div');
+    contentWrap.className = 'msg-content-wrap';
+    contentWrap.appendChild(content);
+
+    if (role === 'user' || role === 'agent') {
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-btn copy-msg-btn';
+        copyBtn.type = 'button';
+        copyBtn.textContent = 'Copy';
+        attachCopyBehavior(copyBtn, () => text);
+        contentWrap.appendChild(copyBtn);
+    }
+
     msgDiv.appendChild(avatar);
-    msgDiv.appendChild(content);
+    msgDiv.appendChild(contentWrap);
     chatWindow.appendChild(msgDiv);
     chatWindow.scrollTop = chatWindow.scrollHeight;
 }
@@ -200,10 +250,28 @@ function appendEvent(eventData) {
     if (currentFilter !== 'all' && currentFilter !== categoryClass) card.style.display = 'none';
     const header = document.createElement('div');
     header.className = 'event-card-header';
-    header.innerHTML = `
-        <span class="event-title">${eventData.source} :: [${eventData.type}]</span>
-        <span class="event-badge">${badgeText}</span>
-    `;
+    const title = document.createElement('span');
+    title.className = 'event-title';
+    title.textContent = `${eventData.source} :: [${eventData.type}]`;
+
+    const headerActions = document.createElement('div');
+    headerActions.className = 'event-header-actions';
+
+    const badge = document.createElement('span');
+    badge.className = 'event-badge';
+    badge.textContent = badgeText;
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-btn copy-event-btn';
+    copyBtn.type = 'button';
+    copyBtn.textContent = 'Copy';
+    attachCopyBehavior(copyBtn, () => JSON.stringify(eventData, null, 2));
+
+    headerActions.appendChild(badge);
+    headerActions.appendChild(copyBtn);
+
+    header.appendChild(title);
+    header.appendChild(headerActions);
     const bodyContainer = document.createElement('div');
     bodyContainer.className = 'event-body';
     const pre = document.createElement('pre');

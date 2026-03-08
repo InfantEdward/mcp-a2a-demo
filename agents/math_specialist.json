@@ -1,17 +1,12 @@
 {
   "name": "MathSpecialist",
-  "description": "A specialist in mathematics, capable of solving equations and performing complex calculations using specialized tools.",
+  "description": "An agent specialized in mathematical calculations.",
+  "url": "http://127.0.0.1:8001/api/a2a/",
   "version": "1.0.0",
   "skills": [
     {
-      "id": "calc-1",
-      "name": "Calculations",
-      "description": "Perform basic arithmetic and complex math.",
-      "tags": ["math", "calculator"]
+      "name": "Basic Math",
+      "description": "Can perform addition, subtraction, multiplication, and division."
     }
-  ],
-  "capabilities": {
-    "streaming": true,
-    "push_notifications": false
-  }
+  ]
 }

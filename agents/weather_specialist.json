@@ -1,0 +1,24 @@
+{
+  "name": "WeatherSpecialist",
+  "description": "An agent specialized in weather intelligence, forecasts, and safety guidance.",
+  "url": "http://127.0.0.1:8002/api/a2a/",
+  "version": "1.0.0",
+  "skills": [
+    {
+      "name": "Current Conditions",
+      "description": "Reports hardcoded current weather snapshots for supported cities."
+    },
+    {
+      "name": "3-Day Forecast",
+      "description": "Shares a hardcoded 3-day outlook including highs, lows, and precipitation chance."
+    },
+    {
+      "name": "Weather Alerts",
+      "description": "Returns hardcoded severe weather advisories and impact windows."
+    },
+    {
+      "name": "Activity Guidance",
+      "description": "Suggests outdoor/indoor activity plans based on weather conditions."
+    }
+  ]
+}

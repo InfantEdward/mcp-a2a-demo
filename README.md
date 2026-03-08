@@ -9,14 +9,44 @@ A distributed agent orchestration system showcasing the **Agent-to-Agent (A2A)**
 
 ## Quick Start
 1. Create a `.env` file with your `GEMINI_API_KEY`.
-2. (Optional) Set `DEFAULT_MODEL` (defaults to `gemini-2.0-flash`).
-3. Run the application:
+2. (Optional) Set `DEFAULT_MODEL` (defaults to `gemini-3-flash-preview`).
+3. Start the stack with either Docker Compose or pure Python.
+
+### Option A: Docker Compose
 
 ```bash
-docker build -t app . && docker run -p 8000:8000 app
+docker compose up --build
 ```
 
 Open [http://localhost:8000](http://localhost:8000) to start.
+
+### Option B: Python (No Docker)
+
+Install dependencies:
+
+```bash
+uv sync
+```
+
+Run in 3 terminals from the repo root:
+
+Terminal 1 (Orchestrator + UI):
+
+```bash
+uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+Terminal 2 (Math specialist):
+
+```bash
+uv run python -m backend.agent_server --agent math_specialist --port 8001
+```
+
+Terminal 3 (Weather specialist):
+
+```bash
+uv run python -m backend.agent_server --agent weather_specialist --port 8002
+```
 
 ## Dynamic Agents
 - **Agent Cards (`/agents`)**: Public A2A metadata (identity, skills).

@@ -1,17 +1,14 @@
-import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from backend.event_logger import event_logger
 from backend.a2a_orchestrator import adk_executor
 from dotenv import load_dotenv
-
+from typing import Any
+from pydantic import BaseModel
 from a2a.server.apps import A2AFastAPIApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCard, AgentCapabilities
-
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger("uvicorn")
 
 load_dotenv()
 card = AgentCard(
@@ -34,6 +31,18 @@ a2a_app = A2AFastAPIApplication(agent_card=card, http_handler=handler).build()
 app = FastAPI()
 
 app.mount("/api/a2a", a2a_app)
+
+
+class RemoteLog(BaseModel):
+    source: str
+    type: str
+    payload: Any
+
+
+@app.post("/api/log")
+async def receive_remote_log(log: RemoteLog):
+    await event_logger.broadcast(log.source, log.type, log.payload)
+    return {"status": "ok"}
 
 
 @app.websocket("/ws/events")

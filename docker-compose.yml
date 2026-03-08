@@ -1,0 +1,44 @@
+services:
+  orchestrator:
+    build: .
+    container_name: mcp-a2a-orchestrator
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    environment:
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-gemini-3-flash-preview}
+      DISCOVERY_HOSTS: http://math-agent:8001,http://weather-agent:8002
+    ports:
+      - "8000:8000"
+
+  math-agent:
+    build: .
+    container_name: mcp-a2a-math-agent
+    command: python -m backend.agent_server --agent math_specialist --port 8001
+    env_file:
+      - .env
+    environment:
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-gemini-3-flash-preview}
+      AGENT_HOST: 0.0.0.0
+      ORCHESTRATOR_LOG_URL: http://orchestrator:8000/api/log
+      A2A_CARD_URL: http://math-agent:8001/api/a2a/
+    expose:
+      - "8001"
+    depends_on:
+      - orchestrator
+
+  weather-agent:
+    build: .
+    container_name: mcp-a2a-weather-agent
+    command: python -m backend.agent_server --agent weather_specialist --port 8002
+    env_file:
+      - .env
+    environment:
+      DEFAULT_MODEL: ${DEFAULT_MODEL:-gemini-3-flash-preview}
+      AGENT_HOST: 0.0.0.0
+      ORCHESTRATOR_LOG_URL: http://orchestrator:8000/api/log
+      A2A_CARD_URL: http://weather-agent:8002/api/a2a/
+    expose:
+      - "8002"
+    depends_on:
+      - orchestrator

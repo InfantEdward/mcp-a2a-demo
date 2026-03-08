@@ -4,7 +4,6 @@ import logging
 from contextlib import AsyncExitStack
 from dotenv import load_dotenv
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -20,7 +19,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 
 load_dotenv()
 
-MODEL_NAME = os.getenv("DEFAULT_MODEL", "gemini-2.0-flash")
+MODEL_NAME = os.getenv("DEFAULT_MODEL", "gemini-3-flash-preview")
 API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 llm = ChatGoogleGenerativeAI(
@@ -47,9 +46,8 @@ class A2AAgent:
                 if mcp_config.get("command") == "python"
                 else mcp_config.get("command")
             )
-            self.mcp_params = StdioServerParameters(
-                command=cmd, args=["-m", "backend.mcp_server"]
-            )
+            mcp_args = mcp_config.get("args") or ["-m", "backend.mcp_server"]
+            self.mcp_params = StdioServerParameters(command=cmd, args=mcp_args)
             logger.info(
                 f"Agent {name} configured with MCP params: {self.mcp_params.command} {self.mcp_params.args}"
             )

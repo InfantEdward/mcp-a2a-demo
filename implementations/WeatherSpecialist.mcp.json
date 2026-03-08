@@ -1,0 +1,4 @@
+{
+  "command": "python",
+  "args": ["-m", "backend.weather_mcp_server"]
+}

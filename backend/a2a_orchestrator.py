@@ -3,12 +3,10 @@ import uuid
 import json
 import logging
 import os
-from backend.agents import A2AAgent, llm
-from langchain_core.messages import get_buffer_string
+import numpy as np
+from backend.agents import A2AAgent
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
-from pydantic import BaseModel, Field
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.types import (
     TaskStatusUpdateEvent,
@@ -31,9 +29,16 @@ def get_session_history(session_id: str) -> ChatMessageHistory:
     return session_histories[session_id]
 
 
-class RouteDecision(BaseModel):
-    agent: str = Field(description="The name of the agent to route to.")
-    reason: str = Field(description="Brief reason for the routing decision.")
+def cosine_similarity(v1, v2):
+    vec1 = np.array(v1)
+    vec2 = np.array(v2)
+    norm1 = np.linalg.norm(vec1)
+    norm2 = np.linalg.norm(vec2)
+
+    if norm1 == 0 or norm2 == 0:
+        return 0.0
+
+    return float(np.dot(vec1, vec2) / (norm1 * norm2))
 
 
 class DynamicRouter(AgentExecutor):
@@ -42,39 +47,12 @@ class DynamicRouter(AgentExecutor):
         self.agents_dir = agents_dir
         self.impl_dir = impl_dir
         self.agents = {}
-        self._load_agents()
 
-        agent_descriptions = "\n".join(
-            [
-                f"{name}: {info['card']['description']} Skills: {', '.join([s['name'] for s in info['card'].get('skills', [])])}"  # noqa: E501
-                for name, info in self.agents.items()
-            ]
+        self.embeddings = GoogleGenerativeAIEmbeddings(
+            model="gemini-embedding-001"
         )
 
-        parser = JsonOutputParser(pydantic_object=RouteDecision)
-
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    f"""You are an A2A Router. Your job is to route user requests to the most appropriate specialized agent based on their Agent Card metadata and the conversation history.
-            
-            AVAILABLE AGENTS:
-            {agent_descriptions}
-            
-            CONVERSATION HISTORY:
-            {{history}}
-            
-            Based on the history and the new input, decide who should handle the request.
-            Respond with a JSON object containing 'agent' and 'reason'.
-            {{format_instructions}}
-            """,  # noqa: E501
-                ),
-                ("human", "{input}"),
-            ]
-        ).partial(format_instructions=parser.get_format_instructions())
-
-        self.router_chain = prompt | llm | parser
+        self._load_agents()
 
     def _load_agents(self):
         if not os.path.exists(self.agents_dir):
@@ -103,9 +81,22 @@ class DynamicRouter(AgentExecutor):
                             mcp_config=mcp_config,
                         )
 
+                        skills_text = ", ".join(
+                            [s["name"] for s in card.get("skills", [])]
+                        )
+                        profile_text = f"Agent: {name}. Description: {card['description']} Skills: {skills_text}"  # noqa: E501
+
+                        logger.info(
+                            f"Generating embedding vector for {name}..."
+                        )
+                        agent_embedding = self.embeddings.embed_query(
+                            profile_text
+                        )
+
                         self.agents[name] = {
                             "card": card,
                             "instance": agent_instance,
+                            "embedding": agent_embedding,
                         }
                         logger.info(f"Registered local agent: {name}")
                 except Exception as e:
@@ -116,9 +107,6 @@ class DynamicRouter(AgentExecutor):
             user_input = context.get_user_input()
             session_id = context.context_id or str(uuid.uuid4())
             history = get_session_history(session_id)
-
-            # Format history for the router
-            history_str = get_buffer_string(history.messages)
 
             orchestrator_event = TaskStatusUpdateEvent(
                 task_id=context.task_id,
@@ -131,7 +119,7 @@ class DynamicRouter(AgentExecutor):
                         role="agent",
                         parts=[
                             TextPart(
-                                text="[Orchestrator] Deciding destination..."
+                                text="[Orchestrator] Computing semantic similarity..."  # noqa: E501
                             )
                         ],
                     ),
@@ -139,28 +127,38 @@ class DynamicRouter(AgentExecutor):
             )
             await event_queue.enqueue_event(orchestrator_event)
             await event_logger.broadcast(
-                source="A2A Server",
-                event_type="Task Status: Working",
-                payload=json.loads(orchestrator_event.model_dump_json()),
+                "A2A Server",
+                "Task Status: Working",
+                json.loads(orchestrator_event.model_dump_json()),
             )
 
-            decision = await self.router_chain.ainvoke(
-                {"input": user_input, "history": history_str}
-            )
-            agent_name = decision["agent"]
-            reason = decision["reason"]
+            input_embedding = await self.embeddings.aembed_query(user_input)
 
-            selected_info = self.agents.get(agent_name)
-            if not selected_info:
-                for k in self.agents.keys():
-                    if k.lower() in agent_name.lower():
-                        selected_info = self.agents[k]
-                        agent_name = k
-                        break
-                if not selected_info:
-                    agent_name = next(iter(self.agents.keys()))
-                    selected_info = self.agents[agent_name]
+            best_agent = None
+            best_score = -1.0
 
+            CONFIDENCE_THRESHOLD = 0.55
+
+            for agent_name, agent_info in self.agents.items():
+                score = cosine_similarity(
+                    input_embedding, agent_info["embedding"]
+                )
+                logger.info(f"Similarity for {agent_name}: {score:.3f}")
+
+                if score > best_score:
+                    best_score = score
+                    best_agent = agent_name
+
+            if best_score >= CONFIDENCE_THRESHOLD:
+                agent_name = best_agent
+                reason = (
+                    f"Selected via vector similarity (score: {best_score:.2f})"
+                )
+            else:
+                agent_name = "GeneralAssistant"
+                reason = f"No agent met the threshold of {CONFIDENCE_THRESHOLD} (best was {best_score:.2f}). Falling back to general."  # noqa: E501
+
+            selected_info = self.agents[agent_name]
             target_agent = selected_info["instance"]
 
             router_event = TaskStatusUpdateEvent(
@@ -182,9 +180,9 @@ class DynamicRouter(AgentExecutor):
             )
             await event_queue.enqueue_event(router_event)
             await event_logger.broadcast(
-                source="A2A Server",
-                event_type="Task Status: Working",
-                payload=json.loads(router_event.model_dump_json()),
+                "A2A Server",
+                "Task Status: Working",
+                json.loads(router_event.model_dump_json()),
             )
 
             history.add_user_message(user_input)
@@ -210,14 +208,13 @@ class DynamicRouter(AgentExecutor):
             )
             await event_queue.enqueue_event(completed_event)
             await event_logger.broadcast(
-                source="A2A Server",
-                event_type="Task Status: Completed",
-                payload=json.loads(completed_event.model_dump_json()),
+                "A2A Server",
+                "Task Status: Completed",
+                json.loads(completed_event.model_dump_json()),
             )
 
         except Exception as e:
             err_msg = f"Router Error: {e}\n{traceback.format_exc()}"
-
             failed_event = TaskStatusUpdateEvent(
                 task_id=context.task_id,
                 context_id=session_id,
@@ -233,9 +230,9 @@ class DynamicRouter(AgentExecutor):
             )
             await event_queue.enqueue_event(failed_event)
             await event_logger.broadcast(
-                source="A2A Server",
-                event_type="Task Status: Failed",
-                payload=json.loads(failed_event.model_dump_json()),
+                "A2A Server",
+                "Task Status: Failed",
+                json.loads(failed_event.model_dump_json()),
             )
 
     async def cancel(self, context: RequestContext, event_queue):

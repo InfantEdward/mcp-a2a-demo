@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MCP + A2A Educational Explorer</title>
+    <title>AgenticFlow Protocol Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <meta name="description" content="An educational frontend exploring MCP and A2A protocols in real-time.">
+    <meta name="description" content="A visual teaching demo for A2A and MCP with live protocol timelines and network tracing.">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
@@ -19,11 +19,11 @@
         <aside class="sidebar">
             <div class="logo-container">
                 <div class="logo-icon"></div>
-                <h1>AgenticFlow</h1>
+                <h1>Protocol Studio</h1>
             </div>
             <nav class="nav-links">
-                <a href="#" class="active" id="nav-chat">Chat & Explore</a>
-                <a href="#" id="nav-arch">Architecture</a>
+                <a href="#" class="active" id="nav-chat">Live Demo</a>
+                <a href="#" id="nav-arch">Analytics</a>
             </nav>
             <div class="connection-status">
                 <span class="status-dot connected" id="ws-status-dot"></span>
@@ -35,14 +35,18 @@
             <div id="app-ui-container" style="display: flex; width: 100%; height: 100%;">
                 <section class="chat-section">
                     <header class="section-header">
-                        <h2>Interactive Terminal</h2>
-                        <p class="subtitle">Interact with the multi-agent system.</p>
+                        <h2>Interactive Console</h2>
+                        <p class="subtitle">Send prompts and watch how the manager delegates across A2A + MCP.</p>
+                        <div class="rationale-panel" id="routing-rationale">
+                            <span class="rationale-label">Routing rationale</span>
+                            <span class="rationale-text">Waiting for a routing decision...</span>
+                        </div>
                     </header>
                     <div class="chat-window" id="chat-window">
                         <div class="message system-msg">
                             <div class="msg-avatar">SYS</div>
                             <div class="msg-content">
-                                <p>Welcome! Ask me a math question or anything else. I will route it appropriately.</p>
+                                <p>Welcome. Try: "What's the weather in Tokyo and should I run outside?" or "Solve 22*17 and explain the routing."</p>
                             </div>
                         </div>
                     </div>
@@ -61,31 +65,74 @@
 
                 <section class="inspector-section">
                     <header class="section-header inspector-header">
-                        <h2>Event Inspector</h2>
+                        <h2>Protocol Flight Recorder</h2>
                         <div class="filters">
                             <button class="filter-btn active" data-filter="all">All</button>
-                            <button class="filter-btn" data-filter="mcp">MCP Tools</button>
-                            <button class="filter-btn" data-filter="a2a">A2A Protocol</button>
+                            <button class="filter-btn" data-filter="a2a">A2A</button>
+                            <button class="filter-btn" data-filter="mcp">MCP</button>
                         </div>
                     </header>
-                    
-                    <div class="events-container" id="events-list">
-                        <div class="event-placeholder">Waiting for events...</div>
+
+                    <div class="recorder-grid">
+                        <div class="panel-card panel-network">
+                            <h3>Network Graph</h3>
+                            <div id="network-graph" class="network-graph"></div>
+                            <div id="node-inspector" class="node-inspector">
+                                <div class="node-inspector-placeholder">Click a node to inspect its Agent Card, tool schema, and recent calls.</div>
+                            </div>
+                        </div>
+                        <div class="panel-card panel-traces">
+                            <h3>Request Traces</h3>
+                            <div id="trace-list" class="trace-list">
+                                <div class="event-placeholder">No correlated requests yet.</div>
+                            </div>
+                        </div>
+                        <div class="panel-card panel-timeline">
+                            <h3>Sequence Timeline</h3>
+                            <div id="timeline-list" class="timeline-list">
+                                <div class="event-placeholder">Timeline will populate with protocol events.</div>
+                            </div>
+                        </div>
+                        <div class="panel-card panel-raw">
+                            <h3>Raw Event Stream</h3>
+                            <div class="events-container" id="events-list">
+                                <div class="event-placeholder">Waiting for events...</div>
+                            </div>
+                        </div>
                     </div>
                 </section>
             </div>
 
             <div id="architecture-container" style="display: none; width: 100%; height: 100%; padding: 3rem; overflow-y: auto; background-color: var(--bg-primary);">
-                <header class="section-header" style="background: transparent; border: none; padding-bottom: 2.5rem; padding-left: 0;">
-                    <h2 style="font-size: 2rem; margin-bottom: 0.5rem;">System Architecture</h2>
-                    <p class="subtitle" style="font-size: 1.1rem;">A2A Protocol Routing & MCP Tool Observability</p>
+                <header class="section-header analytics-header">
+                    <h2>Runtime Analytics</h2>
+                    <p class="subtitle">Live metrics derived from the protocol stream.</p>
                 </header>
-                <div style="max-width: 900px; background: var(--bg-surface); padding: 2.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border-color); box-shadow: 0 10px 30px rgba(0,0,0,0.2);">
-                    <h3 style="color: var(--accent-blue); margin-bottom: 1rem; font-size: 1.3rem;">Data-Driven Handoffs</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 2.5rem; font-size: 1.05rem; line-height: 1.6;">The router dynamically loads <strong>Agent Cards</strong> from the <code>agents/</code> directory and uses an LLM to decide which agent to delegate to based on their metadata.</p>
-                    
-                    <h3 style="color: var(--color-mcp); margin-bottom: 1rem; font-size: 1.3rem;">MCP Sidecar Definitions</h3>
-                    <p style="color: var(--text-secondary); margin-bottom: 2.5rem; font-size: 1.05rem; line-height: 1.6;">Implementation details (MCP server paths) are kept in a separate <code>implementations/</code> folder to keep the public A2A cards clean and protocol-compliant.</p>
+                <div class="analytics-grid">
+                    <div class="metric-card">
+                        <span>Total Events</span>
+                        <strong id="metric-total">0</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>A2A Events</span>
+                        <strong id="metric-a2a">0</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>MCP Events</span>
+                        <strong id="metric-mcp">0</strong>
+                    </div>
+                    <div class="metric-card">
+                        <span>Avg Latency</span>
+                        <strong id="metric-latency">0ms</strong>
+                    </div>
+                    <div class="metric-card metric-wide">
+                        <span>Recent Routing Decisions</span>
+                        <div id="arch-routing" class="arch-routing">No decisions yet.</div>
+                    </div>
+                    <div class="metric-card metric-wide">
+                        <span>Architecture Sequence (latest)</span>
+                        <div id="arch-sequence" class="arch-sequence">Waiting for events...</div>
+                    </div>
                 </div>
             </div>
         </main>

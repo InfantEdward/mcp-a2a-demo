@@ -1,6 +1,7 @@
 import json
 import logging
 import httpx
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +27,19 @@ class EventLogger:
         logger.info(f"WebSocket disconnected. Total: {len(self.connections)}")
 
     async def broadcast(self, source, event_type, payload):
+        envelope = {
+            "source": source,
+            "type": event_type,
+            "payload": payload,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
         if self.remote_url:
             try:
                 async with httpx.AsyncClient() as client:
                     await client.post(
                         self.remote_url,
-                        json={
-                            "source": source,
-                            "type": event_type,
-                            "payload": payload,
-                        },
+                        json=envelope,
                     )
             except Exception as e:
                 logger.error(f"Failed to forward log to Orchestrator: {e}")
@@ -44,9 +48,7 @@ class EventLogger:
         if not self.connections:
             return
 
-        message = json.dumps(
-            {"source": source, "type": event_type, "payload": payload}
-        )
+        message = json.dumps(envelope)
 
         disconnected = set()
         for ws in self.connections:

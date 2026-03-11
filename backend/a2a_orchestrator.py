@@ -4,6 +4,7 @@ import json
 import logging
 import httpx
 import os
+import contextvars
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -27,12 +28,16 @@ from a2a.types import (
 from backend.event_logger import event_logger
 
 logger = logging.getLogger("Orchestrator")
-MODEL_NAME = os.getenv("DEFAULT_MODEL", "gemini-2.0-flash")
+MODEL_NAME = os.getenv("DEFAULT_MODEL", "gemini-3-flash-preview")
 API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 if not API_KEY:
     raise RuntimeError(
         "Missing Gemini API key. Set GEMINI_API_KEY or GOOGLE_API_KEY."
     )
+
+
+active_context_id_var = contextvars.ContextVar("active_context_id", default=None)
+active_task_id_var = contextvars.ContextVar("active_task_id", default=None)
 
 
 def get_discovery_hosts() -> list[str]:
@@ -50,6 +55,8 @@ async def discover_network_agents() -> str:
     """
     known_hosts = get_discovery_hosts()
     found_agents = []
+    context_id = active_context_id_var.get()
+    task_id = active_task_id_var.get()
 
     async with httpx.AsyncClient() as client:
         for host in known_hosts:
@@ -58,6 +65,8 @@ async def discover_network_agents() -> str:
                     "method": "GET",
                     "url": host,
                     "purpose": "agent_card_discovery",
+                    "context_id": context_id,
+                    "task_id": task_id,
                 }
                 await event_logger.broadcast(
                     "A2A Discovery Client",
@@ -71,6 +80,8 @@ async def discover_network_agents() -> str:
                     "method": "GET",
                     "url": host,
                     "status_code": resp.status_code,
+                    "context_id": context_id,
+                    "task_id": task_id,
                     "body": (
                         resp.json() if resp.status_code == 200 else resp.text
                     ),
@@ -93,6 +104,8 @@ async def discover_network_agents() -> str:
                     {
                         "method": "GET",
                         "url": host,
+                        "context_id": context_id,
+                        "task_id": task_id,
                         "error": str(e),
                     },
                 )
@@ -110,6 +123,19 @@ async def delegate_a2a_task(target_url: str, task_description: str) -> str:
     Provide the exact 'target_url' of the agent and a clear 'task_description'.
     """
     logger.info(f"Manager is delegating task to {target_url}...")
+    context_id = active_context_id_var.get()
+    task_id = active_task_id_var.get()
+
+    await event_logger.broadcast(
+        "Manager",
+        "Routing Decision",
+        {
+            "target_url": target_url,
+            "task_preview": task_description[:180],
+            "context_id": context_id,
+            "task_id": task_id,
+        },
+    )
 
     a2a_payload = {
         "jsonrpc": "2.0",
@@ -118,6 +144,7 @@ async def delegate_a2a_task(target_url: str, task_description: str) -> str:
         "params": {
             "message": {
                 "messageId": f"id-{uuid.uuid4()}",
+                "contextId": context_id,
                 "role": "user",
                 "parts": [{"text": task_description}],
             }
@@ -129,17 +156,25 @@ async def delegate_a2a_task(target_url: str, task_description: str) -> str:
             await event_logger.broadcast(
                 "A2A Delegation Client",
                 "JSON-RPC Request",
-                {"target_url": target_url, "payload": a2a_payload},
+                {
+                    "target_url": target_url,
+                    "context_id": context_id,
+                    "task_id": task_id,
+                    "payload": a2a_payload,
+                },
             )
             response = await client.post(target_url, json=a2a_payload)
             response.raise_for_status()
             data = response.json()
+
             await event_logger.broadcast(
                 "A2A Delegation Client",
                 "JSON-RPC Response",
                 {
                     "target_url": target_url,
                     "status_code": response.status_code,
+                    "context_id": context_id,
+                    "task_id": task_id,
                     "payload": data,
                 },
             )
@@ -161,6 +196,8 @@ async def delegate_a2a_task(target_url: str, task_description: str) -> str:
                 "JSON-RPC Error",
                 {
                     "target_url": target_url,
+                    "context_id": context_id,
+                    "task_id": task_id,
                     "request_payload": a2a_payload,
                     "error": str(e),
                 },
@@ -176,6 +213,7 @@ class AutonomousManager(A2AAgentExecutor):
             model=MODEL_NAME, google_api_key=API_KEY, temperature=0
         )
         self.tools = [discover_network_agents, delegate_a2a_task]
+        self.session_histories: dict[str, list[tuple[str, str]]] = {}
 
         system_prompt = (
             "You are the central Manager Agent of a network. "
@@ -193,6 +231,9 @@ class AutonomousManager(A2AAgentExecutor):
     async def execute(self, context: RequestContext, event_queue):
         user_input = context.get_user_input()
         session_id = context.context_id or str(uuid.uuid4())
+        ctx_token = active_context_id_var.set(session_id)
+        task_token = active_task_id_var.set(context.task_id)
+        message_history = self.session_histories.setdefault(session_id, [])
 
         await event_logger.broadcast(
             "A2A Server",
@@ -219,8 +260,9 @@ class AutonomousManager(A2AAgentExecutor):
         )
 
         try:
+            message_history.append(("user", user_input))
             result = await self.agent.ainvoke(
-                {"messages": [("user", user_input)]}
+                {"messages": message_history}
             )
 
             raw_content = result["messages"][-1].content
@@ -235,6 +277,10 @@ class AutonomousManager(A2AAgentExecutor):
                 )
             else:
                 final_answer = str(raw_content)
+
+            message_history.append(("assistant", final_answer))
+            if len(message_history) > 20:
+                self.session_histories[session_id] = message_history[-20:]
 
             completed_event = TaskStatusUpdateEvent(
                 task_id=context.task_id,
@@ -273,6 +319,9 @@ class AutonomousManager(A2AAgentExecutor):
                     ),
                 )
             )
+        finally:
+            active_context_id_var.reset(ctx_token)
+            active_task_id_var.reset(task_token)
 
     async def cancel(self, context: RequestContext, event_queue):
         pass

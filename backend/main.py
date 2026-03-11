@@ -1,5 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
+import json
 from backend.event_logger import event_logger
 from backend.a2a_orchestrator import adk_executor
 from dotenv import load_dotenv
@@ -37,6 +38,120 @@ class RemoteLog(BaseModel):
     source: str
     type: str
     payload: Any
+
+
+def _load_agent_card(path: str) -> dict[str, Any]:
+    with open(path, "r") as f:
+        return json.load(f)
+
+
+@app.get("/api/demo/network")
+async def get_demo_network_metadata():
+    math_card = _load_agent_card("agents/math_specialist.json")
+    weather_card = _load_agent_card("agents/weather_specialist.json")
+
+    return {
+        "nodes": {
+            "browser": {
+                "title": "Browser Client",
+                "description": "Sends JSON-RPC A2A requests to the orchestrator.",
+                "kind": "client",
+            },
+            "manager": {
+                "title": card.name,
+                "description": card.description,
+                "kind": "manager",
+                "agent_card": card.model_dump(),
+            },
+            "math": {
+                "title": math_card["name"],
+                "description": math_card["description"],
+                "kind": "specialist",
+                "agent_card": math_card,
+                "tool_schema": {
+                    "server": "MathTools",
+                    "tools": [
+                        {
+                            "name": "add",
+                            "description": "Add two numbers.",
+                            "arguments": {"a": "float", "b": "float"},
+                        },
+                        {
+                            "name": "subtract",
+                            "description": "Subtract two numbers.",
+                            "arguments": {"a": "float", "b": "float"},
+                        },
+                        {
+                            "name": "multiply",
+                            "description": "Multiply two numbers.",
+                            "arguments": {"a": "float", "b": "float"},
+                        },
+                        {
+                            "name": "divide",
+                            "description": "Divide two numbers.",
+                            "arguments": {"a": "float", "b": "float"},
+                        },
+                        {
+                            "name": "get_current_time",
+                            "description": "Get the current time.",
+                            "arguments": {},
+                        },
+                    ],
+                },
+            },
+            "weather": {
+                "title": weather_card["name"],
+                "description": weather_card["description"],
+                "kind": "specialist",
+                "agent_card": weather_card,
+                "tool_schema": {
+                    "server": "WeatherTools",
+                    "tools": [
+                        {
+                            "name": "get_current_weather",
+                            "description": "Return hardcoded current weather for a city.",
+                            "arguments": {"city": "string"},
+                        },
+                        {
+                            "name": "get_three_day_forecast",
+                            "description": "Return hardcoded three-day forecast.",
+                            "arguments": {"city": "string"},
+                        },
+                        {
+                            "name": "get_weather_alerts",
+                            "description": "Return hardcoded weather alerts.",
+                            "arguments": {"city": "string"},
+                        },
+                        {
+                            "name": "compare_weather",
+                            "description": "Compare weather conditions between two cities.",
+                            "arguments": {"city_a": "string", "city_b": "string"},
+                        },
+                        {
+                            "name": "plan_outdoor_activity",
+                            "description": "Suggest activity plans based on weather conditions.",
+                            "arguments": {"city": "string"},
+                        },
+                    ],
+                },
+            },
+            "mcp": {
+                "title": "MCP Tool Servers",
+                "description": "FastMCP servers accessed over stdio by specialist agents.",
+                "kind": "tools",
+                "servers": [
+                    {
+                        "name": "MathTools",
+                        "module": "backend.mcp_server",
+                    },
+                    {
+                        "name": "WeatherTools",
+                        "module": "backend.weather_mcp_server",
+                    },
+                ],
+            },
+        }
+    }
 
 
 @app.post("/api/log")

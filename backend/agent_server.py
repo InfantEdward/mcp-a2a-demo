@@ -31,7 +31,7 @@ class SingleAgentExecutor(AgentExecutor):
     def __init__(self, agent_instance):
         super().__init__()
         self.agent = agent_instance
-        self.history = []
+        self.histories_by_session = {}
 
     async def execute(self, context: RequestContext, event_queue):
         try:
@@ -49,10 +49,13 @@ class SingleAgentExecutor(AgentExecutor):
 
             from langchain_core.messages import HumanMessage, AIMessage
 
-            self.history.append(HumanMessage(content=user_input))
+            history = self.histories_by_session.setdefault(session_id, [])
+            history.append(HumanMessage(content=user_input))
 
-            response_text = await self.agent.run(self.history, session_id)
-            self.history.append(AIMessage(content=response_text))
+            response_text = await self.agent.run(history, session_id)
+            history.append(AIMessage(content=response_text))
+            if len(history) > 20:
+                self.histories_by_session[session_id] = history[-20:]
 
             completed_event = TaskStatusUpdateEvent(
                 task_id=context.task_id,

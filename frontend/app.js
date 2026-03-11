@@ -623,6 +623,11 @@ function updateRoutingPanels(eventData) {
 }
 
 function handleIncomingEvent(eventData) {
+    if (eventData.source === 'Token Tracker' && eventData.type === 'Usage Update') {
+        renderTokenPanel(eventData.payload);
+        return;
+    }
+
     const localTs = Date.now();
     const category = normalizeCategory(eventData);
     let traceId = extractTraceId(eventData);
@@ -638,10 +643,6 @@ function handleIncomingEvent(eventData) {
         traceId,
         eventId: `ev-${localTs}-${Math.random().toString(36).slice(2, 7)}`
     };
-
-    if (normalized.source === 'Token Tracker' && normalized.type === 'Usage Update') {
-        renderTokenPanel(normalized.payload);
-    }
 
     eventHistory.push(normalized);
     if (eventHistory.length > 400) eventHistory.shift();

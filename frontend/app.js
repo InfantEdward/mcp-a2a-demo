@@ -17,6 +17,7 @@ const traceList = document.getElementById('trace-list');
 const timelineList = document.getElementById('timeline-list');
 const networkGraph = document.getElementById('network-graph');
 const nodeInspector = document.getElementById('node-inspector');
+const tokenStats = document.getElementById('token-stats');
 
 const metricTotal = document.getElementById('metric-total');
 const metricA2A = document.getElementById('metric-a2a');
@@ -35,6 +36,7 @@ let graphSvg = null;
 let graphEdgesLayer = null;
 let graphNodesLayer = null;
 let networkMetadata = { nodes: {} };
+let latestTokenSnapshot = null;
 
 const eventHistory = [];
 const traceMap = new Map();
@@ -393,6 +395,76 @@ function inferRecentTraceId() {
     return null;
 }
 
+function humanizeAgentKey(key) {
+    const map = {
+        manager: 'Manager',
+        mathspecialist: 'Math Specialist',
+        math_specialist: 'Math Specialist',
+        weatherspecialist: 'Weather Specialist',
+        weather_specialist: 'Weather Specialist'
+    };
+    return map[key] || key.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase());
+}
+
+function renderTokenPanel(snapshot) {
+    latestTokenSnapshot = snapshot;
+    tokenStats.innerHTML = '';
+
+    if (!snapshot || !snapshot.agents) {
+        tokenStats.innerHTML = '<div class="token-placeholder">Waiting for model usage...</div>';
+        return;
+    }
+
+    const rows = [];
+    const byAgent = snapshot.agents || {};
+    const priorityKeys = ['manager', 'mathspecialist', 'weatherspecialist'];
+    const seen = new Set();
+
+    priorityKeys.forEach((key) => {
+        rows.push([key, byAgent[key] || { input_tokens: 0, output_tokens: 0, total_tokens: 0, calls: 0 }]);
+        seen.add(key);
+    });
+
+    Object.entries(byAgent).forEach(([key, value]) => {
+        if (!seen.has(key)) rows.push([key, value]);
+    });
+
+    const overall = snapshot.overall || { total_tokens: 0, input_tokens: 0, output_tokens: 0, calls: 0 };
+    rows.unshift(['overall', overall]);
+
+    rows.forEach(([key, counters]) => {
+        const label = key === 'overall' ? 'Overall' : humanizeAgentKey(key);
+        const row = document.createElement('div');
+        row.className = 'token-row';
+
+        const labelEl = document.createElement('span');
+        labelEl.className = 'token-label';
+        labelEl.textContent = `${label} (${counters.calls || 0} calls)`;
+
+        const valueEl = document.createElement('span');
+        valueEl.className = 'token-value';
+        const input = counters.input_tokens || 0;
+        const output = counters.output_tokens || 0;
+        const total = counters.total_tokens || 0;
+        valueEl.textContent = `in ${input} | out ${output} | total ${total}`;
+
+        row.appendChild(labelEl);
+        row.appendChild(valueEl);
+        tokenStats.appendChild(row);
+    });
+}
+
+async function loadTokenMetrics() {
+    try {
+        const response = await fetch('/api/metrics/tokens');
+        if (!response.ok) return;
+        const data = await response.json();
+        renderTokenPanel(data);
+    } catch (_error) {
+        renderTokenPanel(latestTokenSnapshot);
+    }
+}
+
 function normalizeCategory(eventData) {
     const source = (eventData.source || '').toLowerCase();
 
@@ -566,6 +638,10 @@ function handleIncomingEvent(eventData) {
         traceId,
         eventId: `ev-${localTs}-${Math.random().toString(36).slice(2, 7)}`
     };
+
+    if (normalized.source === 'Token Tracker' && normalized.type === 'Usage Update') {
+        renderTokenPanel(normalized.payload);
+    }
 
     eventHistory.push(normalized);
     if (eventHistory.length > 400) eventHistory.shift();
@@ -851,4 +927,5 @@ function debounce(fn, waitMs) {
 bootstrapGraph();
 renderNodeInspector();
 loadNetworkMetadata();
+loadTokenMetrics();
 connectWebSocket();

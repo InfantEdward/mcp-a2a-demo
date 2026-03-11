@@ -16,6 +16,9 @@ from mcp import ClientSession, StdioServerParameters
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_mcp_adapters.tools import load_mcp_tools
+from backend.token_usage import extract_tokens_from_response
+from backend.token_tracker import token_tracker
+from backend.event_logger import event_logger
 
 load_dotenv()
 
@@ -56,6 +59,9 @@ class A2AAgent:
 
     async def run(self, messages, session_id):
         logger.info(f"Agent {self.name} running for session: {session_id}")
+        run_input_tokens = 0
+        run_output_tokens = 0
+        run_total_tokens = 0
 
         if self.mcp_params:
             if self.session is None:
@@ -83,6 +89,10 @@ class A2AAgent:
             all_messages = [system_msg] + list(messages)
 
             response = await llm_with_tools.ainvoke(all_messages)
+            in_t, out_t, tot_t = extract_tokens_from_response(response)
+            run_input_tokens += in_t
+            run_output_tokens += out_t
+            run_total_tokens += tot_t
 
             while response.tool_calls:
                 all_messages.append(response)
@@ -100,13 +110,21 @@ class A2AAgent:
                             )
                         )
                 response = await llm_with_tools.ainvoke(all_messages)
+                in_t, out_t, tot_t = extract_tokens_from_response(response)
+                run_input_tokens += in_t
+                run_output_tokens += out_t
+                run_total_tokens += tot_t
 
-            return self._clean_content(response.content)
+            final_content = self._clean_content(response.content)
+            self._record_token_usage(run_input_tokens, run_output_tokens, run_total_tokens)
+            return final_content
 
         else:
             system_msg = SystemMessage(content=self.instruction)
             all_messages = [system_msg] + list(messages)
             response = await llm.ainvoke(all_messages)
+            in_t, out_t, tot_t = extract_tokens_from_response(response)
+            self._record_token_usage(in_t, out_t, tot_t)
             return self._clean_content(response.content)
 
     async def close(self):
@@ -123,3 +141,21 @@ class A2AAgent:
                     text_parts.append(part)
             return "".join(text_parts)
         return str(content)
+
+    def _record_token_usage(self, input_tokens: int, output_tokens: int, total_tokens: int):
+        if total_tokens <= 0:
+            return
+        agent_key = self.name.lower().replace(" ", "_")
+        token_tracker.record(agent_key, input_tokens, output_tokens, total_tokens)
+        try:
+            import asyncio
+
+            asyncio.create_task(
+                event_logger.broadcast(
+                    "Token Tracker",
+                    "Usage Update",
+                    token_tracker.snapshot(),
+                )
+            )
+        except RuntimeError:
+            pass

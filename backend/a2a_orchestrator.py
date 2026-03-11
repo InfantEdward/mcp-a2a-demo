@@ -26,6 +26,8 @@ from a2a.types import (
     TextPart,
 )
 from backend.event_logger import event_logger
+from backend.token_tracker import token_tracker
+from backend.token_usage import extract_tokens_from_response
 
 logger = logging.getLogger("Orchestrator")
 MODEL_NAME = os.getenv("DEFAULT_MODEL", "gemini-3-flash-preview")
@@ -265,7 +267,17 @@ class AutonomousManager(A2AAgentExecutor):
                 {"messages": message_history}
             )
 
-            raw_content = result["messages"][-1].content
+            final_message = result["messages"][-1]
+            raw_content = final_message.content
+
+            in_tokens, out_tokens, total_tokens = extract_tokens_from_response(final_message)
+            if total_tokens > 0:
+                token_tracker.record("manager", in_tokens, out_tokens, total_tokens)
+                await event_logger.broadcast(
+                    "Token Tracker",
+                    "Usage Update",
+                    token_tracker.snapshot(),
+                )
 
             if isinstance(raw_content, list):
                 final_answer = "".join(

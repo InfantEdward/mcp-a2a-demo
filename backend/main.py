@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 import json
 from backend.event_logger import event_logger
 from backend.a2a_orchestrator import adk_executor
+from backend.token_tracker import token_tracker
 from dotenv import load_dotenv
 from typing import Any
 from pydantic import BaseModel
@@ -156,8 +157,20 @@ async def get_demo_network_metadata():
 
 @app.post("/api/log")
 async def receive_remote_log(log: RemoteLog):
+    if log.source == "Token Tracker" and log.type == "Usage Update":
+        if isinstance(log.payload, dict):
+            token_tracker.merge_snapshot(log.payload)
+        merged = token_tracker.snapshot()
+        await event_logger.broadcast("Token Tracker", "Usage Update", merged)
+        return {"status": "ok", "merged": True}
+
     await event_logger.broadcast(log.source, log.type, log.payload)
     return {"status": "ok"}
+
+
+@app.get("/api/metrics/tokens")
+async def get_token_metrics():
+    return token_tracker.snapshot()
 
 
 @app.websocket("/ws/events")

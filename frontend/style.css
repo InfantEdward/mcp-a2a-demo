@@ -399,7 +399,7 @@ body {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 420px minmax(300px, 1fr);
     grid-template-areas:
-        "network traces"
+        "network network"
         "timeline raw";
     gap: 0.7rem;
     padding: 0.7rem;
@@ -425,7 +425,6 @@ body {
 }
 
 .panel-network { grid-area: network; }
-.panel-traces { grid-area: traces; }
 .panel-timeline { grid-area: timeline; }
 .panel-raw { grid-area: raw; }
 

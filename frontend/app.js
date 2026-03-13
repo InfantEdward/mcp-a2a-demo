@@ -493,6 +493,8 @@ function updateTraceMap(eventData, traceId, category) {
 }
 
 function renderTraceCards() {
+    if (!traceList) return;
+
     const traces = [...traceMap.values()].sort((a, b) => b.lastSeen - a.lastSeen);
 
     traceList.innerHTML = '';

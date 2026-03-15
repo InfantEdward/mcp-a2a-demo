@@ -1,0 +1,16 @@
+{
+  "name": "NewsSpecialist",
+  "description": "An agent specialized in gathering and synthesizing news from anywhere, using a human newsroom analyst behind the scenes.",
+  "url": "http://127.0.0.1:8000/api/news-agent/a2a/",
+  "version": "1.0.0",
+  "skills": [
+    {
+      "name": "Breaking News Lookup",
+      "description": "Answers questions about current events by requesting a newsroom update."
+    },
+    {
+      "name": "News Synthesis",
+      "description": "Condenses multiple news angles into a concise response for the manager."
+    }
+  ]
+}

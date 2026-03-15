@@ -31,6 +31,22 @@
                     <div class="token-placeholder">Waiting for model usage...</div>
                 </div>
             </div>
+            <section class="news-inbox-card" id="news-inbox-card">
+                <div class="news-inbox-header">
+                    <div>
+                        <div class="token-card-title">News Agent Inbox</div>
+                        <p class="news-inbox-subtitle">Human-backed reply panel for the News Specialist.</p>
+                    </div>
+                    <span class="news-inbox-status" id="news-inbox-status">Idle</span>
+                </div>
+                <div class="news-request-body" id="news-request-body">
+                    Waiting for the manager to delegate a news request.
+                </div>
+                <form id="news-response-form" class="news-response-form">
+                    <textarea id="news-response-input" placeholder="Type the news agent response that should go back through A2A..." rows="4"></textarea>
+                    <button type="submit" class="news-submit-btn">Send Reply</button>
+                </form>
+            </section>
             <div class="connection-status">
                 <span class="status-dot connected" id="ws-status-dot"></span>
                 <span id="ws-status-text">Connected</span>

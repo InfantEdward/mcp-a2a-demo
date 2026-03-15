@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 import json
 from backend.event_logger import event_logger
 from backend.a2a_orchestrator import adk_executor
+from backend.human_news_agent import PendingNewsStore, create_human_news_app
 from backend.token_tracker import token_tracker
 from dotenv import load_dotenv
 from typing import Any
@@ -46,10 +47,19 @@ def _load_agent_card(path: str) -> dict[str, Any]:
         return json.load(f)
 
 
+news_pending_store = PendingNewsStore()
+news_card = _load_agent_card("agents/news_specialist.json")
+app.mount(
+    "/api/news-agent",
+    create_human_news_app(news_card, news_pending_store),
+)
+
+
 @app.get("/api/demo/network")
 async def get_demo_network_metadata():
     math_card = _load_agent_card("agents/math_specialist.json")
     weather_card = _load_agent_card("agents/weather_specialist.json")
+    news_card = _load_agent_card("agents/news_specialist.json")
 
     return {
         "nodes": {
@@ -133,6 +143,22 @@ async def get_demo_network_metadata():
                             "description": "Suggest activity plans based on weather conditions.",
                             "arguments": {"city": "string"},
                         },
+                    ],
+                },
+            },
+            "news": {
+                "title": news_card["name"],
+                "description": news_card["description"],
+                "kind": "specialist",
+                "agent_card": news_card,
+                "tool_schema": {
+                    "server": "HumanInbox",
+                    "tools": [
+                        {
+                            "name": "request_news_update",
+                            "description": "Queues a news request for a human analyst and returns the typed response as the agent output.",
+                            "arguments": {"query": "string"},
+                        }
                     ],
                 },
             },

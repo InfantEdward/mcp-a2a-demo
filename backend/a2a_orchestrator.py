@@ -44,7 +44,8 @@ active_task_id_var = contextvars.ContextVar("active_task_id", default=None)
 
 def get_discovery_hosts() -> list[str]:
     hosts = os.getenv(
-        "DISCOVERY_HOSTS", "http://127.0.0.1:8001,http://127.0.0.1:8002"
+        "DISCOVERY_HOSTS",
+        "http://127.0.0.1:8001,http://127.0.0.1:8002,http://127.0.0.1:8000/api/news-agent/",
     )
     return [host.strip() for host in hosts.split(",") if host.strip()]
 
@@ -60,7 +61,7 @@ async def discover_network_agents() -> str:
     context_id = active_context_id_var.get()
     task_id = active_task_id_var.get()
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(follow_redirects=True) as client:
         for host in known_hosts:
             try:
                 discovery_request = {
@@ -220,7 +221,7 @@ class AutonomousManager(A2AAgentExecutor):
         system_prompt = (
             "You are the central Manager Agent of a network. "
             "You have general conversational abilities, but you must delegate specialized tasks "
-            "(like Math or Weather) to external agents. "
+            "(like Math, Weather, or News) to external agents. "
             "Use the 'discover_network_agents' tool to find out who is online, "
             "and the 'delegate_a2a_task' tool to send them work. "
             "If the user asks a general question, just answer it yourself."

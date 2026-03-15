@@ -18,6 +18,11 @@ const timelineList = document.getElementById('timeline-list');
 const networkGraph = document.getElementById('network-graph');
 const nodeInspector = document.getElementById('node-inspector');
 const tokenStats = document.getElementById('token-stats');
+const newsInboxCard = document.getElementById('news-inbox-card');
+const newsInboxStatus = document.getElementById('news-inbox-status');
+const newsRequestBody = document.getElementById('news-request-body');
+const newsResponseForm = document.getElementById('news-response-form');
+const newsResponseInput = document.getElementById('news-response-input');
 
 const metricTotal = document.getElementById('metric-total');
 const metricA2A = document.getElementById('metric-a2a');
@@ -37,6 +42,8 @@ let graphEdgesLayer = null;
 let graphNodesLayer = null;
 let networkMetadata = { nodes: {} };
 let latestTokenSnapshot = null;
+let pendingNewsRequest = null;
+let newsReplySubmitting = false;
 
 const eventHistory = [];
 const traceMap = new Map();
@@ -47,6 +54,7 @@ const graphNodes = [
     { id: 'manager', label: 'A2A Manager', role: 'Router' },
     { id: 'math', label: 'Math Specialist', role: 'Agent' },
     { id: 'weather', label: 'Weather Specialist', role: 'Agent' },
+    { id: 'news', label: 'News Specialist', role: 'Agent' },
     { id: 'mcp', label: 'MCP Tooling', role: 'Tools' }
 ];
 
@@ -54,6 +62,7 @@ const graphConnections = [
     { id: 'browser-manager', from: 'browser', to: 'manager' },
     { id: 'manager-math', from: 'manager', to: 'math' },
     { id: 'manager-weather', from: 'manager', to: 'weather' },
+    { id: 'manager-news', from: 'manager', to: 'news' },
     { id: 'math-mcp', from: 'math', to: 'mcp' },
     { id: 'weather-mcp', from: 'weather', to: 'mcp' }
 ];
@@ -168,16 +177,19 @@ function inferEdgesFromEvent(eventData) {
         const url = `${payload.url || ''}`.toLowerCase();
         if (url.includes('8001') || url.includes('math')) inferred.push('manager-math');
         if (url.includes('8002') || url.includes('weather')) inferred.push('manager-weather');
+        if (url.includes('news-agent') || url.includes('news')) inferred.push('manager-news');
     }
 
     if (source.includes('a2a delegation client')) {
         const target = `${payload.target_url || ''}`.toLowerCase();
         if (target.includes('8001') || target.includes('math')) inferred.push('manager-math');
         if (target.includes('8002') || target.includes('weather')) inferred.push('manager-weather');
+        if (target.includes('news-agent') || target.includes('news')) inferred.push('manager-news');
     }
 
     if (source.includes('mathspecialist')) inferred.push('manager-math');
     if (source.includes('weatherspecialist')) inferred.push('manager-weather');
+    if (source.includes('newsspecialist')) inferred.push('manager-news');
 
     if (source.includes('mcp')) {
         inferred.push('math-mcp', 'weather-mcp');
@@ -196,6 +208,7 @@ function trackGraphActivity(eventData) {
     }
     if (source.includes('math')) markGraphNodeActive('math');
     if (source.includes('weather')) markGraphNodeActive('weather');
+    if (source.includes('news')) markGraphNodeActive('news');
     if (source.includes('mcp') || type.includes('tool')) markGraphNodeActive('mcp');
 
     inferEdgesFromEvent(eventData).forEach(markGraphEdgeActive);
@@ -210,6 +223,7 @@ function recentCallsForNode(nodeId) {
         },
         math: item => (item.source || '').toLowerCase().includes('math'),
         weather: item => (item.source || '').toLowerCase().includes('weather'),
+        news: item => (item.source || '').toLowerCase().includes('news'),
         mcp: item => (item.source || '').toLowerCase().includes('mcp')
     };
 
@@ -401,9 +415,53 @@ function humanizeAgentKey(key) {
         mathspecialist: 'Math Specialist',
         math_specialist: 'Math Specialist',
         weatherspecialist: 'Weather Specialist',
-        weather_specialist: 'Weather Specialist'
+        weather_specialist: 'Weather Specialist',
+        newsspecialist: 'News Specialist',
+        news_specialist: 'News Specialist'
     };
     return map[key] || key.replace(/_/g, ' ').replace(/\b\w/g, m => m.toUpperCase());
+}
+
+function setPendingNewsRequest(pending) {
+    pendingNewsRequest = pending;
+    renderNewsInbox();
+}
+
+function clearPendingNewsRequest() {
+    pendingNewsRequest = null;
+    newsReplySubmitting = false;
+    renderNewsInbox();
+}
+
+function renderNewsInbox() {
+    newsInboxCard.classList.toggle('active', Boolean(pendingNewsRequest));
+    newsInboxStatus.textContent = newsReplySubmitting
+        ? 'Sending'
+        : pendingNewsRequest
+            ? 'Awaiting Reply'
+            : 'Idle';
+
+    if (!pendingNewsRequest) {
+        newsRequestBody.textContent = 'Waiting for the manager to delegate a news request.';
+        newsResponseInput.value = '';
+        newsResponseInput.disabled = true;
+        return;
+    }
+
+    newsRequestBody.textContent = `[${pendingNewsRequest.task_id || 'pending'}] ${pendingNewsRequest.prompt || 'No prompt available.'}`;
+    newsResponseInput.disabled = newsReplySubmitting;
+    if (!newsReplySubmitting) newsResponseInput.focus();
+}
+
+async function loadPendingNewsRequest() {
+    try {
+        const response = await fetch('/api/news-agent/pending');
+        if (!response.ok) return;
+        const data = await response.json();
+        setPendingNewsRequest(data.pending || null);
+    } catch (_error) {
+        setPendingNewsRequest(null);
+    }
 }
 
 function renderTokenPanel(snapshot) {
@@ -417,7 +475,7 @@ function renderTokenPanel(snapshot) {
 
     const rows = [];
     const byAgent = snapshot.agents || {};
-    const priorityKeys = ['manager', 'mathspecialist', 'weatherspecialist'];
+    const priorityKeys = ['manager', 'mathspecialist', 'weatherspecialist', 'newsspecialist'];
     const seen = new Set();
 
     priorityKeys.forEach((key) => {
@@ -624,6 +682,26 @@ function updateRoutingPanels(eventData) {
     if (routingHistory.length > 30) routingHistory.shift();
 }
 
+function updateNewsInboxFromEvent(eventData) {
+    const source = (eventData.source || '').toLowerCase();
+    if (!source.includes('newsspecialist')) return;
+
+    if (eventData.type === 'Task Input Required') {
+        const payload = eventData.payload || {};
+        setPendingNewsRequest({
+            request_id: payload.request_id,
+            task_id: payload.task_id,
+            context_id: payload.context_id,
+            prompt: payload.prompt
+        });
+        return;
+    }
+
+    if (eventData.type === 'Task Completed' || eventData.type === 'Task Failed' || eventData.type === 'Human Reply Submitted') {
+        clearPendingNewsRequest();
+    }
+}
+
 function handleIncomingEvent(eventData) {
     if (eventData.source === 'Token Tracker' && eventData.type === 'Usage Update') {
         renderTokenPanel(eventData.payload);
@@ -651,6 +729,7 @@ function handleIncomingEvent(eventData) {
 
     updateTraceMap(normalized, traceId, category);
     updateRoutingPanels(normalized);
+    updateNewsInboxFromEvent(normalized);
     trackGraphActivity(normalized);
 
     renderTraceCards();
@@ -736,6 +815,47 @@ chatForm.addEventListener('submit', async (e) => {
     } finally {
         chatInput.disabled = false;
         chatInput.focus();
+    }
+});
+
+newsResponseForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!pendingNewsRequest || newsReplySubmitting) return;
+
+    const responseText = newsResponseInput.value.trim();
+    if (!responseText) return;
+
+    newsReplySubmitting = true;
+    renderNewsInbox();
+
+    try {
+        const response = await fetch('/api/news-agent/respond', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                request_id: pendingNewsRequest.request_id,
+                response_text: responseText
+            })
+        });
+        const data = await response.json();
+
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || 'Failed to submit news response.');
+        }
+
+        newsResponseInput.value = '';
+        clearPendingNewsRequest();
+    } catch (err) {
+        newsReplySubmitting = false;
+        renderNewsInbox();
+        appendMessage(`News agent reply failed: ${err.message}`, 'system');
+    }
+});
+
+newsResponseInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        newsResponseForm.requestSubmit();
     }
 });
 
@@ -931,4 +1051,6 @@ bootstrapGraph();
 renderNodeInspector();
 loadNetworkMetadata();
 loadTokenMetrics();
+loadPendingNewsRequest();
+renderNewsInbox();
 connectWebSocket();

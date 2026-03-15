@@ -5,6 +5,7 @@ A distributed agent orchestration system showcasing the **Agent-to-Agent (A2A)**
 ## Architecture
 - **Dynamic Router**: Uses an LLM to route requests based on Agent Cards.
 - **Data-Driven Agents**: Define agents via JSON in `/agents` and their MCP tools in `/implementations`.
+- **Human-Backed News Agent**: A discoverable A2A News Specialist that pauses for a reply from the UI inbox panel.
 - **Observability**: Real-time Event Inspector for raw JSON-RPC protocol traffic.
 
 ## Quick Start
@@ -35,6 +36,8 @@ Terminal 1 (Orchestrator + UI):
 ```bash
 uv run uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
+
+This process also serves the embedded `NewsSpecialist` agent at `/api/news-agent` and its human-response inbox in the sidebar UI.
 
 Terminal 2 (Math specialist):
 

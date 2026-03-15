@@ -20,13 +20,11 @@ from a2a.types import (
     AgentCapabilities,
 )
 
-from backend.agents import A2AAgent
+from backend.agents import A2AAgent, AgentRunResult
 from backend.event_logger import event_logger
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("AgentServer")
-
-
 class SingleAgentExecutor(AgentExecutor):
     def __init__(self, agent_instance):
         super().__init__()
@@ -52,7 +50,37 @@ class SingleAgentExecutor(AgentExecutor):
             history = self.histories_by_session.setdefault(session_id, [])
             history.append(HumanMessage(content=user_input))
 
-            response_text = await self.agent.run(history, session_id)
+            response = await self.agent.run(history, session_id)
+            if isinstance(response, AgentRunResult) and response.state == "input_required":
+                history.append(AIMessage(content=response.message))
+                if len(history) > 20:
+                    self.histories_by_session[session_id] = history[-20:]
+
+                clarification_event = TaskStatusUpdateEvent(
+                    task_id=context.task_id,
+                    context_id=session_id,
+                    final=True,
+                    status=TaskStatus(
+                        state=TaskState.input_required,
+                        message=Message(
+                            messageId=str(uuid.uuid4()),
+                            role="agent",
+                            parts=[
+                                TextPart(
+                                    text=f"[{self.agent.name}] {response.message}"
+                                )
+                            ],
+                        ),
+                    ),
+                )
+                await event_queue.enqueue_event(clarification_event)
+                await event_logger.broadcast(
+                    f"{self.agent.name} (A2A)",
+                    "Task Input Required",
+                    json.loads(clarification_event.model_dump_json()),
+                )
+                return
+            response_text = response
             history.append(AIMessage(content=response_text))
             if len(history) > 20:
                 self.histories_by_session[session_id] = history[-20:]

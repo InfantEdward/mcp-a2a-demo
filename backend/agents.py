@@ -2,6 +2,7 @@ import os
 import sys
 import logging
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
@@ -15,6 +16,7 @@ import mcp.client.stdio
 from mcp import ClientSession, StdioServerParameters
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, ToolMessage
+from langchain_core.tools import tool
 from langchain_mcp_adapters.tools import load_mcp_tools
 from backend.token_usage import extract_tokens_from_response
 from backend.token_tracker import token_tracker
@@ -30,6 +32,18 @@ llm = ChatGoogleGenerativeAI(
 )
 
 
+@dataclass
+class AgentRunResult:
+    state: str
+    message: str
+
+
+@tool
+async def request_clarification(question: str) -> str:
+    """Request one concise follow-up question when the user's input is missing required information or is ambiguous."""
+    return question
+
+
 class A2AAgent:
     """A generic A2A Agent whose identity and tools are defined by data."""
 
@@ -41,6 +55,7 @@ class A2AAgent:
         self.exit_stack = AsyncExitStack()
         self.session = None
         self.tools = None
+        self.local_tools = []
 
         if mcp_config:
             python_exe = sys.executable
@@ -56,6 +71,9 @@ class A2AAgent:
             )
         else:
             logger.info(f"Agent {name} initialized without MCP tools.")
+
+        if self.name.lower() == "weatherspecialist":
+            self.local_tools = [request_clarification]
 
     async def run(self, messages, session_id):
         logger.info(f"Agent {self.name} running for session: {session_id}")
@@ -78,14 +96,15 @@ class A2AAgent:
 
                 await self.session.initialize()
 
-                self.tools = await load_mcp_tools(self.session)
+                mcp_tools = await load_mcp_tools(self.session)
+                self.tools = [*self.local_tools, *mcp_tools]
                 logger.info(
                     f"MCP connection established and tools loaded for {self.name}."
                 )
 
             llm_with_tools = llm.bind_tools(self.tools)
 
-            system_msg = SystemMessage(content=self.instruction)
+            system_msg = SystemMessage(content=self._system_instruction())
             all_messages = [system_msg] + list(messages)
 
             response = await llm_with_tools.ainvoke(all_messages)
@@ -97,6 +116,12 @@ class A2AAgent:
             while response.tool_calls:
                 all_messages.append(response)
                 for tool_call in response.tool_calls:
+                    if tool_call["name"] == request_clarification.name:
+                        question = tool_call["args"].get("question", "").strip()
+                        return AgentRunResult(
+                            state="input_required",
+                            message=question or "Could you clarify your request?",
+                        )
                     tool = next(
                         (t for t in self.tools if t.name == tool_call["name"]),
                         None,
@@ -120,16 +145,51 @@ class A2AAgent:
             return final_content
 
         else:
-            system_msg = SystemMessage(content=self.instruction)
+            system_msg = SystemMessage(content=self._system_instruction())
             all_messages = [system_msg] + list(messages)
-            response = await llm.ainvoke(all_messages)
+            llm_with_tools = llm.bind_tools(self.local_tools) if self.local_tools else llm
+            response = await llm_with_tools.ainvoke(all_messages)
             in_t, out_t, tot_t = extract_tokens_from_response(response)
-            self._record_token_usage(in_t, out_t, tot_t)
+            run_input_tokens += in_t
+            run_output_tokens += out_t
+            run_total_tokens += tot_t
+
+            while getattr(response, "tool_calls", None):
+                all_messages.append(response)
+                for tool_call in response.tool_calls:
+                    if tool_call["name"] == request_clarification.name:
+                        question = tool_call["args"].get("question", "").strip()
+                        self._record_token_usage(
+                            run_input_tokens, run_output_tokens, run_total_tokens
+                        )
+                        return AgentRunResult(
+                            state="input_required",
+                            message=question or "Could you clarify your request?",
+                        )
+                response = await llm_with_tools.ainvoke(all_messages)
+                in_t, out_t, tot_t = extract_tokens_from_response(response)
+                run_input_tokens += in_t
+                run_output_tokens += out_t
+                run_total_tokens += tot_t
+
+            self._record_token_usage(
+                run_input_tokens, run_output_tokens, run_total_tokens
+            )
             return self._clean_content(response.content)
 
     async def close(self):
         await self.exit_stack.aclose()
         self.session = None
+
+    def _system_instruction(self) -> str:
+        if self.name.lower() != "weatherspecialist":
+            return self.instruction
+
+        return (
+            f"{self.instruction}\n\n"
+            "If the user's request is missing a required detail or is ambiguous, "
+            "do not guess. Call the `request_clarification` tool with one concise follow-up question instead of answering."
+        )
 
     def _clean_content(self, content):
         if isinstance(content, list):

@@ -174,7 +174,7 @@ function inferEdgesFromEvent(eventData) {
     }
 
     if (source.includes('a2a discovery client')) {
-        const url = `${payload.url || ''}`.toLowerCase();
+        const url = `${payload.url || payload.base_url || ''}`.toLowerCase();
         if (url.includes('8001') || url.includes('math')) inferred.push('manager-math');
         if (url.includes('8002') || url.includes('weather')) inferred.push('manager-weather');
         if (url.includes('news-agent') || url.includes('news')) inferred.push('manager-news');
@@ -261,6 +261,20 @@ function renderNodeInspector() {
         pre.textContent = JSON.stringify(nodeData.agent_card, null, 2);
         section.appendChild(label);
         section.appendChild(pre);
+        nodeInspector.appendChild(section);
+    }
+
+    if (nodeData.discovery_url) {
+        const section = document.createElement('div');
+        section.className = 'node-inspector-section';
+        const label = document.createElement('span');
+        label.className = 'node-inspector-label';
+        label.textContent = 'Discovery URL';
+        const row = document.createElement('div');
+        row.className = 'node-tool-row';
+        row.textContent = nodeData.discovery_url;
+        section.appendChild(label);
+        section.appendChild(row);
         nodeInspector.appendChild(section);
     }
 

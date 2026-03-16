@@ -227,7 +227,7 @@ def create_human_news_app(
     a2a_app = A2AFastAPIApplication(agent_card=card, http_handler=handler).build()
     app = FastAPI(title=card_data["name"])
 
-    @app.get("/")
+    @app.get("/.well-known/agent-card.json")
     def serve_agent_card():
         return card.model_dump()
 

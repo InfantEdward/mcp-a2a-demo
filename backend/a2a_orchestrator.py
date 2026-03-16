@@ -40,14 +40,22 @@ if not API_KEY:
 
 active_context_id_var = contextvars.ContextVar("active_context_id", default=None)
 active_task_id_var = contextvars.ContextVar("active_task_id", default=None)
+AGENT_CARD_PATH = "/.well-known/agent-card.json"
 
 
 def get_discovery_hosts() -> list[str]:
     hosts = os.getenv(
         "DISCOVERY_HOSTS",
-        "http://127.0.0.1:8001,http://127.0.0.1:8002,http://127.0.0.1:8000/api/news-agent/",
+        "http://127.0.0.1:8001,http://127.0.0.1:8002,http://127.0.0.1:8000/api/news-agent",
     )
     return [host.strip() for host in hosts.split(",") if host.strip()]
+
+
+def build_agent_card_url(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    if normalized.endswith(AGENT_CARD_PATH):
+        return normalized
+    return f"{normalized}{AGENT_CARD_PATH}"
 
 
 @tool
@@ -63,10 +71,12 @@ async def discover_network_agents() -> str:
 
     async with httpx.AsyncClient(follow_redirects=True) as client:
         for host in known_hosts:
+            card_url = build_agent_card_url(host)
             try:
                 discovery_request = {
                     "method": "GET",
-                    "url": host,
+                    "base_url": host,
+                    "url": card_url,
                     "purpose": "agent_card_discovery",
                     "context_id": context_id,
                     "task_id": task_id,
@@ -77,11 +87,12 @@ async def discover_network_agents() -> str:
                     discovery_request,
                 )
 
-                logger.info(f"Manager is pinging {host} for discovery...")
-                resp = await client.get(host, timeout=3.0)
+                logger.info(f"Manager is pinging {card_url} for discovery...")
+                resp = await client.get(card_url, timeout=3.0)
                 discovery_response = {
                     "method": "GET",
-                    "url": host,
+                    "base_url": host,
+                    "url": card_url,
                     "status_code": resp.status_code,
                     "context_id": context_id,
                     "task_id": task_id,
@@ -106,7 +117,8 @@ async def discover_network_agents() -> str:
                     "Discovery Error",
                     {
                         "method": "GET",
-                        "url": host,
+                        "base_url": host,
+                        "url": card_url,
                         "context_id": context_id,
                         "task_id": task_id,
                         "error": str(e),

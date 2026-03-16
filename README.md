@@ -54,3 +54,10 @@ uv run python -m backend.agent_server --agent weather_specialist --port 8002
 ## Dynamic Agents
 - **Agent Cards (`/agents`)**: Public A2A metadata (identity, skills).
 - **Tool Sidecars (`/implementations`)**: Private MCP configurations (server paths).
+
+Runtime discovery uses each agent's well-known card endpoint:
+
+- Orchestrator: `/.well-known/agent-card.json`
+- Math specialist: `http://127.0.0.1:8001/.well-known/agent-card.json`
+- Weather specialist: `http://127.0.0.1:8002/.well-known/agent-card.json`
+- News specialist: `http://127.0.0.1:8000/api/news-agent/.well-known/agent-card.json`

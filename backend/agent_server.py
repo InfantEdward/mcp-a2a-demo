@@ -177,7 +177,7 @@ def create_app(agent_filename: str):
     ).build()
     app = FastAPI(title=card_data["name"])
 
-    @app.get("/")
+    @app.get("/.well-known/agent-card.json")
     def serve_agent_card():
         return card.model_dump()
 

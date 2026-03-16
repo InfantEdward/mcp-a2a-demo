@@ -36,6 +36,11 @@ app = FastAPI()
 app.mount("/api/a2a", a2a_app)
 
 
+@app.get("/.well-known/agent-card.json")
+def serve_agent_card():
+    return card.model_dump()
+
+
 class RemoteLog(BaseModel):
     source: str
     type: str
@@ -73,12 +78,14 @@ async def get_demo_network_metadata():
                 "description": card.description,
                 "kind": "manager",
                 "agent_card": card.model_dump(),
+                "discovery_url": "http://127.0.0.1:8000/.well-known/agent-card.json",
             },
             "math": {
                 "title": math_card["name"],
                 "description": math_card["description"],
                 "kind": "specialist",
                 "agent_card": math_card,
+                "discovery_url": "http://127.0.0.1:8001/.well-known/agent-card.json",
                 "tool_schema": {
                     "server": "MathTools",
                     "tools": [
@@ -115,6 +122,7 @@ async def get_demo_network_metadata():
                 "description": weather_card["description"],
                 "kind": "specialist",
                 "agent_card": weather_card,
+                "discovery_url": "http://127.0.0.1:8002/.well-known/agent-card.json",
                 "tool_schema": {
                     "server": "WeatherTools",
                     "tools": [
@@ -151,6 +159,7 @@ async def get_demo_network_metadata():
                 "description": news_card["description"],
                 "kind": "specialist",
                 "agent_card": news_card,
+                "discovery_url": "http://127.0.0.1:8000/api/news-agent/.well-known/agent-card.json",
                 "tool_schema": {
                     "server": "HumanInbox",
                     "tools": [

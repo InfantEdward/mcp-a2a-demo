@@ -7,7 +7,7 @@ services:
       - .env
     environment:
       DEFAULT_MODEL: ${DEFAULT_MODEL:-gemini-3-flash-preview}
-      DISCOVERY_HOSTS: http://math-agent:8001,http://weather-agent:8002,http://orchestrator:8000/api/news-agent/
+      DISCOVERY_HOSTS: http://math-agent:8001,http://weather-agent:8002,http://orchestrator:8000/api/news-agent
     ports:
       - "8000:8000"
 
